@@ -88,7 +88,7 @@ curl -X POST "https://api.runpod.ai/v2/$RUNPOD_ENDPOINT_ID/run" \
 | `scripts/generate_payload.py` | `python scripts/generate_payload.py --sentences sentences.json --words words.json --output payload.json` | Builds a valid `payload.json` from transcript fixtures. Adjust CLI flags to point at your assets. |
 | `scripts/test-runpod-endpoint.sh` | `RUNPOD_API_KEY=... RUNPOD_ENDPOINT_ID=... OPENAI_API_KEY=... ./scripts/test-runpod-endpoint.sh payload.json` | Fires a RunPod job, streams status updates, and saves the final response to `runpod_test_output.json`. Requires `jq` for formatting. |
 
-> For local smoke tests outside of RunPod, execute the published container with the sample payload and inspect the printed `ServiceResult`.
+> Prefer the synchronous endpoint (`/run-sync`) when you need a blocking response without setting up webhooks.
 
 ## 5. RunPod Sync API Examples
 
@@ -236,34 +236,11 @@ Sync and async executions share the same `ServiceResult` envelope documented in 
 
 Unrecognised options are ignored, ensuring forward compatibility.
 
-## 9. Sync Mode Reference
-
-Run the handler directly (useful for contract tests or quick transcript experiments):
-
-```bash
-docker run --rm -i --platform=linux/amd64 \
-  -e OPENAI_API_KEY=sk-... \
-  -e MAX_CONCURRENCY=10 \
-  -e REQUEST_TIMEOUT_SECONDS=1800 \
-  -v "$(pwd)/payload.json:/tmp/payload.json:ro" \
-  ghcr.io/oak-ridge-ventures/viral-moments-service:main-5091c69 \
-  python - <<'PY'
-import json
-from pathlib import Path
-from viral_moments_service.handler import handle_sync
-payload = json.loads(Path('/tmp/payload.json').read_text())
-result = handle_sync(payload.get('input', payload))
-print(json.dumps(result, indent=2))
-PY
-```
-
-The same entrypoint powers RunPod jobs (`handle_sync` behind the scenes), so running locally is representative of serverless behaviour.
-
-## 10. Troubleshooting
+## 9. Troubleshooting
 
 - **Empty `moments` array** – Check transcript quality and ensure hooks land in the first 2 s; the AI will drop mediocre clips rather than force results.
 - **Validation errors** – Inspect logs for `Discarding moment due to validation error`; boundary clamps can fail when transcripts lack words/sentences in the requested range.
 - **Webhook timeouts** – Increase `WEBHOOK_RETRY_ATTEMPTS` / `WEBHOOK_RETRY_MAX_DELAY_SECONDS` or ensure the receiving service responds within RunPod’s timeout window.
 - **Token spikes** – Large transcripts can create many chunks. Tune `chunk_duration_ms` and optionally reduce `max_concurrency` to match your OpenAI quota.
 
-With these details you can run the service locally for contract tests or integrate it into RunPod Serverless with full webhook support, pricing telemetry, and hardened error handling.
+With these details you can integrate with the RunPod-hosted service using either asynchronous webhook flows or the synchronous endpoint while retaining full visibility into usage and pricing.

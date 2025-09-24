@@ -53,11 +53,11 @@ High-level reference for the Viral Moments service that packages long-form trans
 - **Signing** – When `WEBHOOK_SECRET` is present, payloads are signed using `hex(hmac_sha256(secret, body))` in `X-Webhook-Signature`.
 - **Retries** – Exponential backoff driven by `WEBHOOK_RETRY_ATTEMPTS`, `WEBHOOK_RETRY_BASE_DELAY_SECONDS`, and `WEBHOOK_RETRY_MAX_DELAY_SECONDS`.
 
-## Deployment Snapshot
-1. Build or pull the published container image (`ghcr.io/oak-ridge-ventures/viral-moments-service:<tag>`).
-2. Configure environment variables (OpenAI, webhook secret, concurrency, timeouts).
-3. Deploy to RunPod Serverless with command `python -m viral_moments_service.runpod_worker --serve` and set webhook URLs.
-4. Use the synchronous API or webhook-enabled async mode to validate the integration with sample payloads.
+## Operational Snapshot
+1. The service is hosted for you on RunPod; obtain the endpoint ID and webhook configuration from the provider.
+2. Ensure environment overrides (OpenAI model, concurrency, timeout) are agreed before submitting production traffic.
+3. Use the asynchronous `/run` flow with webhooks for most integrations; fall back to `/run-sync` for tooling or synchronous needs.
+4. Monitor returned usage/pricing fields to understand OpenAI consumption per job.
 
 ## Testing & Validation Tips
 - Generate deterministic payloads from transcripts with `scripts/generate_payload.py`.
