@@ -1,6 +1,6 @@
 # Viral Moment Response Contract
 
-Reference specification for the `ServiceResult` payload returned by both synchronous runs and RunPod webhooks. All fields use camelCase to stay interoperable with Laravel consumers.
+Reference specification for the `ServiceResult` payload returned by both synchronous runs and RunPod webhooks. All fields use camelCase to stay interoperable with downstream consumers.
 
 ## 1. Top-Level Envelope (`ServiceResult`)
 
@@ -10,7 +10,7 @@ Reference specification for the `ServiceResult` payload returned by both synchro
 | `total_chunks` | integer | Total number of transcript chunks scheduled for processing. |
 | `successful_chunks` | integer | Count of completed chunks. Equals `total_chunks` unless a failure short-circuits processing. |
 | `failed_chunks` | integer | Chunks that did not complete. Non-zero implies the request raised before all results were aggregated. |
-| `moments` | `ViralMoment[]` | Deduplicated viral moment records ready for persistence in Laravel. Ordered by start time after pruning. |
+| `moments` | `ViralMoment[]` | Deduplicated viral moment records ready for persistence in downstream systems. Ordered by start time after pruning. |
 | `metadata` | object | Execution metadata described below. Always present. |
 | `usage` | object \| `null` | Aggregated OpenAI token usage; omitted when OpenAI does not return token data. |
 
@@ -108,7 +108,7 @@ Reference specification for the `ServiceResult` payload returned by both synchro
 | `quote` | string | — | Word-for-word snippet reconstructed from transcript words; falls back to AI text. |
 | `platforms` | string[] | ✓ | Platforms this moment targets. Defaults to `twitter`, `instagram_reels`, `youtube_shorts`, `tiktok`, `linkedin`. |
 | `socialCopy` | object | ✓ | Platform-specific copy; keys mirror `platforms`. Length limits enforced per platform (see below). |
-| `scorecard` | object | ✓ | Scoring rubric consumed by Laravel. Always mirrored to `viralScore`. |
+| `scorecard` | object | ✓ | Scoring rubric shared with downstream consumers. Always mirrored to `viralScore`. |
 | `viralScore` | object | — | Alias for `scorecard`. Added automatically if omitted by the model. |
 | `chunk_index` | integer | — | Index of the source chunk (0-based). Included for debugging/analytics. |
 
@@ -133,7 +133,7 @@ Reference specification for the `ServiceResult` payload returned by both synchro
 ```
 
 - Integers 1–10. The validator ensures both `scorecard` and `viralScore` exist; whichever is missing is cloned from the other.
-- Additional metrics from future prompt iterations are preserved if supplied, but parity with Laravel today expects the five core keys above.
+- Additional metrics from future prompt iterations are preserved if supplied; consumers today should expect the five core keys above.
 
 ### 2.3 Additional Notes
 
@@ -234,4 +234,4 @@ Reference specification for the `ServiceResult` payload returned by both synchro
 }
 ```
 
-Use this contract to validate deserialisation on the Laravel side, populate analytics dashboards, or snapshot results in the dedicated documentation repository.
+Use this contract to validate deserialisation in external services, populate analytics dashboards, or snapshot results in the dedicated documentation repository.

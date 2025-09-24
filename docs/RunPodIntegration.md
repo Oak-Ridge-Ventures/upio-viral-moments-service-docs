@@ -1,6 +1,6 @@
 # RunPod Integration Guide
 
-This externally shareable guide covers everything required to operate the Viral Moments microservice on RunPod Serverless—credentials to gather, how to exercise the endpoint, bundled test scripts, and the webhook lifecycle. The Python unit tests that underpin these behaviours live in [`tests/test_webhook.py`](../tests/test_webhook.py) and [`tests/test_core.py`](../tests/test_core.py).
+This externally shareable guide covers everything required to operate the Viral Moments microservice on RunPod Serverless—credentials to gather, how to exercise the endpoint, bundled test scripts, and the webhook lifecycle.
 
 ## 0. Quick Checklist
 
@@ -21,7 +21,7 @@ This externally shareable guide covers everything required to operate the Viral 
 | Optional webhook secret | Set `WEBHOOK_SECRET` for HMAC-SHA256 signatures (`X-Webhook-Signature`). |
 | Timeouts & concurrency | `REQUEST_TIMEOUT_SECONDS` (default `30`), `MAX_CONCURRENCY` (default `4`). |
 
-> Tip: `DERIVE_PROGRESS_WEBHOOK=true` appends `/progress` to the supplied result URL when no explicit progress hook is provided, matching Laravel defaults.
+> Tip: `DERIVE_PROGRESS_WEBHOOK=true` appends `/progress` to the supplied result URL when no explicit progress hook is provided, mirroring the behaviour expected by existing downstream systems.
 
 ## 2. Request Schema
 
@@ -88,9 +88,52 @@ curl -X POST "https://api.runpod.ai/v2/$RUNPOD_ENDPOINT_ID/run" \
 | `scripts/generate_payload.py` | `python scripts/generate_payload.py --sentences sentences.json --words words.json --output payload.json` | Builds a valid `payload.json` from transcript fixtures. Adjust CLI flags to point at your assets. |
 | `scripts/test-runpod-endpoint.sh` | `RUNPOD_API_KEY=... RUNPOD_ENDPOINT_ID=... OPENAI_API_KEY=... ./scripts/test-runpod-endpoint.sh payload.json` | Fires a RunPod job, streams status updates, and saves the final response to `runpod_test_output.json`. Requires `jq` for formatting. |
 
-> For smoke tests without RunPod, call `viral_moments_service.handler.handle_sync` locally using the same payload created above.
+> For local smoke tests outside of RunPod, execute the published container with the sample payload and inspect the printed `ServiceResult`.
 
-## 5. Webhook Payloads
+## 5. RunPod Sync API Examples
+
+RunPod exposes a synchronous variant that blocks until the job completes. This is useful for tooling or when webhook infrastructure is unavailable.
+
+### 5.1 `curl`
+
+```bash
+curl -X POST "https://api.runpod.ai/v2/$RUNPOD_ENDPOINT_ID/run-sync" \
+  -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @payload.json \
+  | jq
+```
+
+The response body matches the asynchronous result payload (`status`, `result`, `moments`, `usage`, `pricing`). RunPod caps synchronous execution time; long transcripts may require asynchronous submission instead.
+
+### 5.2 Python (`requests`)
+
+```python
+import json
+import os
+import requests
+
+endpoint = os.environ["RUNPOD_ENDPOINT_ID"]
+api_key = os.environ["RUNPOD_API_KEY"]
+
+with open("payload.json", "r", encoding="utf-8") as fh:
+    payload = json.load(fh)
+
+resp = requests.post(
+    f"https://api.runpod.ai/v2/{endpoint}/run-sync",
+    headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    },
+    json=payload,
+    timeout=900,
+)
+resp.raise_for_status()
+result = resp.json()
+print(json.dumps(result, indent=2))
+```
+
+## 6. Webhook Payloads
 
 Webhooks surface three high-level statuses:
 
@@ -129,7 +172,7 @@ Webhooks surface three high-level statuses:
       "video_id": "abc123",
       "moments_before_dedup": 27,
       "moments_after_dedup": 9,
-      "pricing": { /* see section 6 */ }
+      "pricing": { /* see section 7 */ }
     },
     "usage": {
       "totals": {
@@ -170,7 +213,7 @@ Webhooks surface three high-level statuses:
 
 Retries follow exponential backoff: attempts = `WEBHOOK_RETRY_ATTEMPTS` (default `3`), base delay = `WEBHOOK_RETRY_BASE_DELAY_SECONDS` (`1.5`), capped by `WEBHOOK_RETRY_MAX_DELAY_SECONDS` (`12`).
 
-## 6. Result & Pricing Schema
+## 7. Result & Pricing Schema
 
 Sync and async executions share the same `ServiceResult` envelope documented in [docs/ViralMomentResponse.md](./ViralMomentResponse.md). Highlights:
 
@@ -178,7 +221,7 @@ Sync and async executions share the same `ServiceResult` envelope documented in 
 - `usage` – Canonical token metrics with alias normalisation for text/audio responses; `response_time_ms` is included when available from OpenAI streaming endpoints.
 - `metadata.pricing` – Cost estimate derived from the bundled pricing table (`gpt-5`, `gpt-4o`, `gpt-4o-mini`, `o3`, `o3-mini`). Includes `rates_per_million`, actual `tokens`, and monetised `cost` breakdown plus `total`.
 
-## 7. Configuration Overrides
+## 8. Configuration Overrides
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -193,7 +236,7 @@ Sync and async executions share the same `ServiceResult` envelope documented in 
 
 Unrecognised options are ignored, ensuring forward compatibility.
 
-## 8. Sync Mode Reference
+## 9. Sync Mode Reference
 
 Run the handler directly (useful for contract tests or quick transcript experiments):
 
@@ -216,7 +259,7 @@ PY
 
 The same entrypoint powers RunPod jobs (`handle_sync` behind the scenes), so running locally is representative of serverless behaviour.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 - **Empty `moments` array** – Check transcript quality and ensure hooks land in the first 2 s; the AI will drop mediocre clips rather than force results.
 - **Validation errors** – Inspect logs for `Discarding moment due to validation error`; boundary clamps can fail when transcripts lack words/sentences in the requested range.
